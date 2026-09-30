@@ -38,19 +38,22 @@ public class DocumentParseService {
     private static final int MAX_TEXT_LENGTH = 5 * 1024 * 1024; // 5MB
 
     private final TextCleaningService textCleaningService;
+    private final TextQualityAssessor qualityAssessor;
     private final ThreadPoolExecutor parseExecutor;
     private final DocumentParseProperties properties;
 
     public DocumentParseService(TextCleaningService textCleaningService) {
-        this(textCleaningService, null, new DocumentParseProperties());
+        this(textCleaningService, new TextQualityAssessor(), null, new DocumentParseProperties());
     }
 
     @Autowired
     public DocumentParseService(TextCleaningService textCleaningService,
+                                TextQualityAssessor qualityAssessor,
                                 @Qualifier("documentParseExecutor")
                                 ThreadPoolExecutor parseExecutor,
                                 DocumentParseProperties properties) {
         this.textCleaningService = textCleaningService;
+        this.qualityAssessor = qualityAssessor;
         this.parseExecutor = parseExecutor;
         this.properties = properties;
     }
@@ -73,6 +76,7 @@ public class DocumentParseService {
 
         try {
             String content = parseWithTimeout(file.getBytes());
+            warnIfQualitySuspicious(content, fileName, file.getSize());
             String cleanedContent = textCleaningService.cleanText(content);
             log.info("文件解析成功，提取文本长度: {} 字符", cleanedContent.length());
             return cleanedContent;
@@ -103,11 +107,30 @@ public class DocumentParseService {
 
         try {
             String content = parseWithTimeout(fileBytes);
+            warnIfQualitySuspicious(content, fileName, fileBytes.length);
             String cleanedContent = textCleaningService.cleanText(content);
             log.info("文件解析成功，提取文本长度: {} 字符", cleanedContent.length());
             return cleanedContent;
         } catch (BusinessException e) {
             throw e;
+        }
+    }
+
+    /**
+     * 在文本清洗<b>之前</b>评估提取质量并记录日志。
+     *
+     * <p>清洗会删除控制字符，一旦执行就失去了判断依据，因此必须前置。
+     * 质量异常时不抛异常——文档可能只是部分损坏，直接失败会误伤可用内容；
+     * 但必须留下明确日志，避免残缺文本静默流入下游 LLM 分析。</p>
+     */
+    private void warnIfQualitySuspicious(String rawText, String fileName, long sourceByteSize) {
+        TextQualityAssessor.QualityReport report = qualityAssessor.assess(rawText, sourceByteSize);
+        if (report.suspicious()) {
+            log.warn("文档解析质量异常，提取内容可能不完整: file={}, 长度={}, 源字节={}, 原因={}",
+                    fileName, report.totalChars(), sourceByteSize, report.reason());
+        } else if (report.hasDamageSignal()) {
+            log.info("文档解析存在少量异常字符（未达告警阈值）: file={}, 控制符={}, 兼容部首={}, 替换字符={}",
+                    fileName, report.controlChars(), report.compatRadicals(), report.replacementChars());
         }
     }
 
