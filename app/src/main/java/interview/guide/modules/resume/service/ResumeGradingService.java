@@ -18,6 +18,8 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,6 +97,9 @@ public class ResumeGradingService {
             // 加载用户提示词并填充变量
             Map<String, Object> variables = new HashMap<>();
             variables.put("resumeText", resumeText);
+            // 注入当前日期：LLM 的知识存在截止时间，若不显式告知，
+            // 会把简历中「当前日期之前」的时间误判为未来时间
+            variables.put("currentDate", LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE));
             String userPrompt = userPromptTemplate.render(variables);
             
             // 添加格式指令到系统提示词
