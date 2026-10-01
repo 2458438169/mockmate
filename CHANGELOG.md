@@ -34,6 +34,51 @@
 
 ### 修复
 
+- **向量化全部失败：Embedding 请求携带了模型不支持的参数**（2026-10-01）
+
+  **现象**：知识库文档向量化 100% 失败，`vector_status` 停在 `FAILED`，
+  异常栈定位到 `OpenAiEmbeddingModel.call → BadRequestException`。
+  **RAG 问答链路因此完全不可用。**
+
+  **根因（两处叠加，各自都会导致 HTTP 400）**：
+
+  1. **`dimensions` 参数被无条件发送**。`LlmProviderRegistry` 在构建
+     `OpenAiEmbeddingOptions` 时直接把 provider 维度传给 API，
+     而 `resolveEmbeddingDimensions` 在未配置时会兜底到全局默认值（1024），
+     导致该参数**永远非空、永远被发送**。bge-m3 是固定维度模型，不接受此参数。
+  2. **embedding 渠道不支持 base64 编码**。Spring AI 的 `OpenAiEmbeddingModel`
+     默认以 base64 编码发送向量，而 `cf/` 前缀（Cloudflare 托管）只接受
+     `encoding_format=float`。
+
+  实测各渠道对这两个参数的接受情况：
+
+  | 渠道 | 裸请求 | `dimensions` | `encoding_format: base64` |
+  |---|---|---|---|
+  | `cf/bge-m3` | ✅ | ❌ 400 | ❌ 400 |
+  | `BAAI/bge-m3` | ✅ | ❌ 400 | ✅ |
+  | `Pro/BAAI/bge-m3` | ✅ | ❌ 400 | ✅ |
+
+  **修复**：
+  1. `LlmProviderRegistry` 仅在 provider **显式**配置维度时才传递 `dimensions`；
+     未配置则完全不传（并记录 INFO 日志说明）
+  2. `LlmProviderBootstrapService.resolveEmbeddingDimensions` 去掉兜底逻辑，
+     未显式配置时写入 `null`（此前是它把 1024 写进了所有 provider 记录）
+  3. 移除 `LlmProviderRegistry` 中因此变为死代码的同名私有方法
+  4. embedding 渠道由 `cf/bge-m3` 换为 `BAAI/bge-m3`
+
+  **关键澄清**：`dimensions` 此前承担了两个被混在一起的职责——
+  **向量表结构的维度**（由 `spring.ai.vectorstore.pgvector.dimensions` 与
+  Flyway 建表脚本决定）与 **传给 Embedding API 的参数**。
+  两者无关，本次将其拆开。
+
+  **验证**：
+  - 日志确认 `Provider 'tumuer' 未显式配置 embeddingDimensions，不向 Embedding API 传递 dimensions 参数`
+  - 上传文档后 `vector_status = COMPLETED`，`vector_store` 表写入 1 行向量，
+    全程 0 条 ERROR
+  - **端到端跑通 RAG 问答**：提问「什么是延迟双删？为什么需要第二次删除？」
+    返回的答案准确覆盖了文档中的三个要点（定义、并发读导致的不一致、
+    延迟时间应大于一次读请求耗时）
+
 - **简历分析误判时间线为「未来时间」**（2026-09-30）
 
   **现象**：简历中 `2026.05 - 2026.07`（过去时间）被判定为「未来时间」，
@@ -79,36 +124,6 @@
 - **重写 README**：替换为面向本仓库的说明文档，补充本地运行步骤、技术选型说明与常见问题。（2026-09-29）
 
 ## 已知问题
-
-- 🔴 **向量化全部失败：Embedding 请求携带了模型不支持的 `dimensions` 参数**（2026-09-30 发现，未修复）
-
-  **现象**：知识库文档向量化 100% 失败，异常栈定位到
-  `OpenAiEmbeddingModel.call → BadRequestException`。RAG 问答链路因此完全不可用。
-
-  **根因**：`LlmProviderRegistry` 在构建 `OpenAiEmbeddingOptions` 时
-  **无条件**设置 `dimensions`：
-
-  ```java
-  .dimensions(resolveEmbeddingDimensions(config.embeddingDimensions()))
-  ```
-
-  而 `resolveEmbeddingDimensions` 在 provider 未配置时会兜底到全局
-  `app.ai.embedding-dimensions`（默认 1024），因此该参数**永远非空、永远会发给 API**。
-
-  但 bge-m3 是**固定维度模型**，不接受 `dimensions`。实测各渠道均返回 HTTP 400：
-
-  | 渠道 | 裸请求 | `dimensions` | `encoding_format: base64` |
-  |---|---|---|---|
-  | `cf/bge-m3` | ✅ | ❌ 400 | ❌ 400 |
-  | `BAAI/bge-m3` | ✅ | ❌ 400 | ✅ |
-  | `Pro/BAAI/bge-m3` | ✅ | ❌ 400 | ✅ |
-
-  **修复方向**：`dimensions` 承担了两个不同职责，当前代码把它们混为一谈——
-  **向量表结构的维度**（必须，由全局配置决定）与 **传给 Embedding API 的参数**
-  （对固定维度模型不适用）。应拆开：仅当 provider **显式**配置维度时才传给 API，
-  未配置则不传。注意需同步移除本项目 provider 配置中的 `embedding-dimensions`。
-
-- **文档解析缺少质量检测**：见上方「新增」——已于 2026-09-30 完成。
 
 - **分析 Prompt 的「技术优化基准」会诱导 LLM 建议未采用的组件**：
   `resume-analysis-user.st` 中列有一份含具体指标的参考表达模板

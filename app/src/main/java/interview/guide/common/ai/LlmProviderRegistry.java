@@ -260,10 +260,26 @@ public class LlmProviderRegistry {
             providerId, config.baseUrl(), config.embeddingModel());
 
         OpenAIClient openAiClient = ApiPathResolver.buildOpenAiClient(config.baseUrl(), config.apiKey());
-        OpenAiEmbeddingOptions options = OpenAiEmbeddingOptions.builder()
-            .model(config.embeddingModel())
-            .dimensions(resolveEmbeddingDimensions(config.embeddingDimensions()))
-            .build();
+
+        // 仅当 provider 显式配置了维度时才把 dimensions 传给 Embedding API。
+        //
+        // 原因：dimensions 在这里承担的是「API 参数」职责，而固定维度模型
+        // （bge-m3 等）不接受该参数，传了会直接返回 HTTP 400。
+        // 此前实现会兜底到全局默认值，导致该参数永远非空、永远被发送。
+        //
+        // 注意：向量表结构所需的维度由全局 app.ai.embedding-dimensions 决定，
+        // 与本参数是两件不同的事，不可混用。
+        OpenAiEmbeddingOptions.Builder optionsBuilder = OpenAiEmbeddingOptions.builder()
+            .model(config.embeddingModel());
+
+        Integer apiDimensions = config.embeddingDimensions();
+        if (apiDimensions != null && apiDimensions > 0) {
+            optionsBuilder.dimensions(apiDimensions);
+        } else {
+            log.info("[LlmProviderRegistry] Provider '{}' 未显式配置 embeddingDimensions，"
+                + "不向 Embedding API 传递 dimensions 参数", providerId);
+        }
+        OpenAiEmbeddingOptions options = optionsBuilder.build();
 
         return OpenAiEmbeddingModel.builder()
             .openAiClient(openAiClient)
@@ -400,13 +416,6 @@ public class LlmProviderRegistry {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
-    }
-
-    private Integer resolveEmbeddingDimensions(Integer configuredDimensions) {
-        if (configuredDimensions != null && configuredDimensions > 0) {
-            return configuredDimensions;
-        }
-        return properties.getEmbeddingDimensions();
     }
 
     private boolean looksLikeChatModel(String model) {
