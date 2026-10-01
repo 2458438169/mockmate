@@ -247,7 +247,7 @@ public class LlmProviderRegistry {
             throw new BusinessException(ErrorCode.PROVIDER_CONFIG_READ_FAILED,
                 "Provider '" + providerId + "' 未配置可用的 Embedding 模型，无法执行知识库向量化");
         }
-        if (looksLikeChatModel(config.embeddingModel())) {
+        if (EmbeddingModelSupport.looksLikeChatModel(config.embeddingModel())) {
             String recommendation = RECOMMENDED_EMBEDDING_MODELS.get(providerId.toLowerCase());
             String suffix = recommendation != null
                 ? "，推荐填写 " + recommendation
@@ -419,32 +419,9 @@ public class LlmProviderRegistry {
     }
 
     /**
-     * 判断模型名是否「像聊天模型」，用于拦截把聊天模型误配成 Embedding 模型的情况。
-     *
-     * <p>厂商前缀白名单的判定过于粗糙：它只看模型名开头，会把同一厂商的
-     * Embedding 模型一并误伤。例如 {@code Qwen/Qwen3-Embedding-4B} 以
-     * {@code qwen} 开头，会被误判为聊天模型而直接抛异常。</p>
-     *
-     * <p>因此先做一次显式排除：模型名中包含 {@code embed} 的（如
-     * {@code Qwen3-Embedding-4B}、{@code text-embedding-v3}、
-     * {@code embedding-3}）一律视为 Embedding 模型。</p>
-     *
-     * <p>包级可见以便单元测试直接覆盖该纯函数判定。</p>
+     * 判断模型名是否为聊天模型 —— 已抽取至 {@link EmbeddingModelSupport}，
+     * 避免在多个服务中各留一份副本导致修复遗漏。
      */
-    boolean looksLikeChatModel(String model) {
-        String lower = model.toLowerCase();
-        // 名称含 embed 的一律视为 Embedding 模型，优先于厂商前缀判定
-        if (lower.contains("embed")) {
-            return false;
-        }
-        return lower.startsWith("glm-")
-            || lower.startsWith("deepseek")
-            || lower.startsWith("kimi")
-            || lower.startsWith("moonshot")
-            || lower.startsWith("qwen")
-            || lower.startsWith("ernie");
-    }
-
     private record ProviderSnapshot(
         String id,
         String baseUrl,

@@ -4,6 +4,36 @@
 
 ## [未发布]
 
+### 重构
+
+- **抽取 `EmbeddingModelSupport`，统一三处重复的判定逻辑**（2026-10-01）
+
+  **背景**：`looksLikeChatModel` 与 `resolveEmbeddingDimensions` 这两个纯函数，
+  此前在 `LlmProviderRegistry`、`LlmProviderBootstrapService`、
+  `LlmProviderConfigService` 中**各有一份完全相同的副本**。
+
+  这直接导致了上一轮修复的遗漏——「Embedding 模型被误判为聊天模型」只改到了
+  前两处，第三处被漏掉。**同一规则存在多份副本时，修一处就少一处。**
+
+  **变更**：
+  - 新增 `common/ai/EmbeddingModelSupport`，集中两条规则：
+    - `looksLikeChatModel` —— 含 `embed` 的名称优先判为 Embedding 模型
+    - `normalizeDimensions` —— 仅保留显式配置的正整数，未配置返回 `null`
+  - 三个服务改为调用工具类，删除各自的私有副本
+  - **补充修复**：`LlmProviderConfigService.validateEmbeddingConfig` 此前
+    要求维度必须非空。维度现为可选（留空 = 使用模型原生维度），
+    故调整为「填写时必须是正整数，留空合法」
+
+  **为什么维度要允许留空**：固定维度模型（bge-m3 等）收到 `dimensions`
+  参数会被 API 拒绝；MRL 模型（text-embedding-3-*、Qwen3-Embedding-*）
+  想降维才需要填写。留空是合法且有意义的语义，不是漏填。
+
+  **验证**：
+  - 新增 `EmbeddingModelSupportTest`（20 个测试：15 个模型名判定 + 5 个维度归一化）
+  - `common.ai` + `modules.llmprovider` + `infrastructure.file` 三包共
+    **150 个测试全部通过**
+  - 端到端：清空向量后重新向量化 → `COMPLETED`，RAG 问答答案准确
+
 ### 新增
 
 - **文档解析质量检测**（2026-09-30）

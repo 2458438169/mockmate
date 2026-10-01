@@ -1,5 +1,6 @@
 package interview.guide.modules.llmprovider.service;
 
+import interview.guide.common.ai.EmbeddingModelSupport;
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
 import interview.guide.modules.llmprovider.model.LlmGlobalSettingEntity;
@@ -56,7 +57,7 @@ public class LlmProviderBootstrapService {
           .apiKeyCiphertext(encrypted.ciphertext())
           .model(config.getModel())
           .embeddingModel(trimOrNull(config.getEmbeddingModel()))
-          .embeddingDimensions(resolveEmbeddingDimensions(config.getEmbeddingDimensions()))
+          .embeddingDimensions(EmbeddingModelSupport.normalizeDimensions(config.getEmbeddingDimensions()))
           .supportsEmbedding(supportsEmbedding)
           .temperature(config.getTemperature())
           .enabled(true)
@@ -113,19 +114,7 @@ public class LlmProviderBootstrapService {
         && !isBlank(provider.getEmbeddingModel());
   }
 
-  /**
-   * 仅保留 provider 显式声明的向量维度，未配置时返回 null。
-   *
-   * <p>该值最终会作为 dimensions 参数发送给 Embedding API，而固定维度模型
-   * （bge-m3 等）不接受该参数，传了会返回 HTTP 400。因此这里<b>不能</b>兜底到
-   * 全局默认值——否则每次请求都会携带 dimensions 并被拒绝。
-   *
-   * <p>向量表结构所需的维度由 {@code spring.ai.vectorstore.pgvector.dimensions}
-   * 决定，与本值无关。</p>
-   */
-  private Integer resolveEmbeddingDimensions(Integer configuredDimensions) {
-    return (configuredDimensions != null && configuredDimensions > 0) ? configuredDimensions : null;
-  }
+  /** 向量维度归一化已抽取至 {@link EmbeddingModelSupport}，避免多份副本导致修复遗漏。 */
 
   private String trimOrNull(String value) {
     if (value == null) {

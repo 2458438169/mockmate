@@ -9,8 +9,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -249,39 +247,6 @@ class LlmProviderRegistryTest {
         // 不写任何 mock，避免 Mockito 严格模式把占位记为异常失败。
     }
 
-    @Nested
-    @DisplayName("Embedding 模型名判定（looksLikeChatModel）")
-    class EmbeddingModelNameTests {
-
-        @ParameterizedTest
-        @DisplayName("Embedding 模型不应被误判为聊天模型")
-        @ValueSource(strings = {
-            "Qwen/Qwen3-Embedding-4B",   // 曾因前缀 'qwen' 被误判，导致向量化全部失败
-            "Nebius/Qwen3-Embedding-8B",
-            "text-embedding-v3",
-            "text-embedding-3-small",
-            "embedding-3",
-            "BAAI/bge-m3",
-            "cf/qwen-embedding-0.6b"
-        })
-        void embeddingModelsNotFlagged(String model) {
-            assertFalse(registry.looksLikeChatModel(model),
-                model + " 是 Embedding 模型，不应被判为聊天模型");
-        }
-
-        @ParameterizedTest
-        @DisplayName("聊天模型应被识别出来")
-        @ValueSource(strings = {
-            "qwen3.5-flash",
-            "glm-5",
-            "deepseek-v4-flash",
-            "kimi-k3",
-            "moonshot-v1-8k",
-            "ernie-4.0"
-        })
-        void chatModelsFlagged(String model) {
-            assertTrue(registry.looksLikeChatModel(model),
-                model + " 是聊天模型，应被识别出来以拦截误配");
-        }
-    }
+    // Embedding 模型名判定与维度归一化的测试见 EmbeddingModelSupportTest ——
+    // 相关逻辑已抽取至 EmbeddingModelSupport，不再由本类持有。
 }
