@@ -64,6 +64,35 @@
 
 ### 修复
 
+- **「重新分析」不会重新解析文档**（2026-10-01）
+
+  **现象**：对已存在的简历点「重新分析」，只会拿数据库中**已存的旧解析文本**
+  重跑 LLM。解析器升级或修复后，已有简历永远拿不到新的解析结果——
+  **我们自己在验证 Tika 升级时就踩过这个坑，最后只能「删除 + 重新上传」绕过去。**
+
+  **根因**：`AnalyzeStreamConsumer` 的兜底逻辑：
+
+  ```java
+  String resumeText = resume.getResumeText();
+  if (isBlank(resumeText)) {          // ← 只有文本为空才重新解析
+      resumeText = parseService.downloadAndParseContent(...);
+  }
+  ```
+
+  这段兜底本意是「历史数据正文为空时从对象存储恢复」，
+  但也顺带导致了「重新分析无法刷新解析结果」。
+
+  **修复**：`ResumeUploadService.reanalyze` 在重置状态时一并清空 `resumeText`，
+  使其走完整的「重新下载 → 解析 → 分析」链路。
+
+  **取舍说明**：这不是「把 bug 绕过」，而是明确语义——**「重新分析」= 完整重来一遍**。
+  解析耗时实测约 500ms，对该操作可忽略；原始文件仍在对象存储中，
+  解析失败也不会丢失源文件。
+
+  **验证**：对 `resumeId=4` 调用 `/reanalyze`，
+  `DocumentParseService` 日志由 0 条变为出现「开始解析文件 / 文件解析成功」，
+  分析完成后 `analyze_status = COMPLETED` 且生成新的分析记录。
+
 - **Embedding 模型被误判为聊天模型，导致向量化失败**（2026-10-01）
 
   **现象**：将 embedding 模型换为 `Qwen/Qwen3-Embedding-4B` 后，

@@ -198,6 +198,18 @@ public class ResumeUploadService {
         transactionalExecutor.run(() -> {
             ResumeEntity resume = resumeRepository.findById(resumeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历不存在"));
+
+            // 清空已解析文本，强制下游重新解析文档。
+            //
+            // AnalyzeStreamConsumer 仅在 resumeText 为空时才调用解析逻辑，因此
+            // 不清空的话，「重新分析」只会拿旧的解析结果重跑 LLM —— 解析器升级后，
+            // 已存在的简历永远拿不到新的解析结果（我们自己在验证修复时踩过这个坑，
+            // 最后只能「删除 + 重新上传」绕过去）。
+            //
+            // 置空后走一遍完整链路：从 RustFS 重新下载 → 解析 → 分析。
+            // 原始文件仍在对象存储中，解析失败也不会丢失源文件。
+            // 解析耗时实测约 500ms，对「重新分析」这个操作来说可忽略。
+            resume.setResumeText(null);
             resume.setAnalyzeStatus(AsyncTaskStatus.PENDING);
             resume.setAnalyzeError(null);
             resume.setAnalyzeAttemptId(null);
