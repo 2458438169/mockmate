@@ -34,6 +34,38 @@
 
 ### 修复
 
+- **Embedding 模型被误判为聊天模型，导致向量化失败**（2026-10-01）
+
+  **现象**：将 embedding 模型换为 `Qwen/Qwen3-Embedding-4B` 后，
+  向量化立即失败，异常定位在 `LlmProviderRegistry.createEmbeddingModel`。
+
+  **根因**：`looksLikeChatModel` 这个「防止把聊天模型误配成 Embedding 模型」
+  的守卫，采用**厂商前缀**判定：
+
+  ```java
+  lower.startsWith("qwen")   // "qwen/qwen3-embedding-4b" 命中 → 误判
+  ```
+
+  它只看模型名开头，会把同一厂商的 **Embedding** 模型一并误伤。
+  `Qwen/Qwen3-Embedding-4B` 以小写 `qwen` 开头，于是被当成聊天模型直接拒绝。
+
+  **为什么之前没暴露**：此前使用的 `BAAI/bge-m3` 恰好不匹配任何前缀，
+  这个缺陷被选型"绕过去了"。它是**一直存在**的，只是换模型才触发。
+
+  **修复**：显式排除优先于前缀判定——模型名中包含 `embed` 的一律视为
+  Embedding 模型（覆盖 `Qwen3-Embedding-*`、`text-embedding-*`、`embedding-3` 等）。
+  该方法改为包级可见以便直接单元测试。
+
+  **验证**：
+  - 新增 13 个参数化单元测试：7 个 Embedding 模型名（含此前被误判的
+    `Qwen/Qwen3-Embedding-4B`）不应被标记，6 个聊天模型名应被标记
+  - 端到端：切换为 `Qwen/Qwen3-Embedding-4B`（显式配置 `dimensions: 1024`，
+    该模型原生 2560 维、属 MRL 模型）后，`vector_status = COMPLETED`，
+    向量写入成功；RAG 问答返回的答案准确覆盖文档三个要点
+
+  **换模型的连带处理**：向量空间不兼容，已清空 `vector_store` 中由
+  `bge-m3` 产生的旧向量并重新向量化。
+
 - **向量化全部失败：Embedding 请求携带了模型不支持的参数**（2026-10-01）
 
   **现象**：知识库文档向量化 100% 失败，`vector_status` 停在 `FAILED`，

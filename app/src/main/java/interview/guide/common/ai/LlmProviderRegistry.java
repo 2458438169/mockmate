@@ -418,8 +418,25 @@ public class LlmProviderRegistry {
         return value == null || value.isBlank();
     }
 
-    private boolean looksLikeChatModel(String model) {
+    /**
+     * 判断模型名是否「像聊天模型」，用于拦截把聊天模型误配成 Embedding 模型的情况。
+     *
+     * <p>厂商前缀白名单的判定过于粗糙：它只看模型名开头，会把同一厂商的
+     * Embedding 模型一并误伤。例如 {@code Qwen/Qwen3-Embedding-4B} 以
+     * {@code qwen} 开头，会被误判为聊天模型而直接抛异常。</p>
+     *
+     * <p>因此先做一次显式排除：模型名中包含 {@code embed} 的（如
+     * {@code Qwen3-Embedding-4B}、{@code text-embedding-v3}、
+     * {@code embedding-3}）一律视为 Embedding 模型。</p>
+     *
+     * <p>包级可见以便单元测试直接覆盖该纯函数判定。</p>
+     */
+    boolean looksLikeChatModel(String model) {
         String lower = model.toLowerCase();
+        // 名称含 embed 的一律视为 Embedding 模型，优先于厂商前缀判定
+        if (lower.contains("embed")) {
+            return false;
+        }
         return lower.startsWith("glm-")
             || lower.startsWith("deepseek")
             || lower.startsWith("kimi")
