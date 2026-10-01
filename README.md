@@ -1,6 +1,6 @@
 # MockMate
 
-> AI 模拟面试与 RAG 知识库平台 · 基于 Spring AI 2.0 + pgvector 的 Agent 应用实践项目
+> AI 模拟面试与 RAG 知识库平台 · 基于 Spring AI 2.0 + pgvector 的 LLM 应用实践项目
 
 ---
 
@@ -25,7 +25,12 @@
 用户提问 → 问题向量化 → 相似度检索 → 拼 Prompt → LLM 生成 → SSE 流式返回
 ```
 
-**为什么做这个项目**：目标是学习 Agent 应用开发，通过一个完整可运行的系统把核心能力跑通——RAG 检索增强、Prompt 工程、结构化输出、工具调用与 Skill 扩展、异步任务编排。选这个方向是因为它同时覆盖两条线：**Agent 应用开发**（Spring AI、RAG、MCP、Skill、Advisor）和 **Java 后端工程实践**（Redis Stream 异步、分布式限流、虚拟线程），而不是一个孤立的「调一次大模型 API」的示例。
+**为什么做这个项目**：目标是学习 LLM 应用开发，通过一个完整可运行的系统把核心能力跑通——RAG 检索增强、Prompt 工程、结构化输出、异步任务编排。选这个方向是因为它同时覆盖两条线：**LLM 应用开发**（Spring AI、RAG、Prompt 工程、结构化输出）和 **Java 后端工程实践**（Redis Stream 异步、分布式限流、虚拟线程），而不是一个孤立的「调一次大模型 API」的示例。
+
+> **关于技术边界**：本项目的核心链路（知识库问答、简历分析）是**固定流程的 RAG 应用**——
+> 检索 → 拼 Prompt → 生成，不含工具调用与自主循环。
+> Spring AI 提供的 Agent 扩展点（Advisor、SkillsTool）在项目中有接入，
+> 但只用于语音面试链路，未构成核心能力。
 
 ---
 
