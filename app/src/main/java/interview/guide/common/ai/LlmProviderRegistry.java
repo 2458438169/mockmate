@@ -275,9 +275,15 @@ public class LlmProviderRegistry {
         Integer apiDimensions = config.embeddingDimensions();
         if (apiDimensions != null && apiDimensions > 0) {
             optionsBuilder.dimensions(apiDimensions);
+            log.info("[LlmProviderRegistry] Provider '{}' 显式配置 embeddingDimensions={}，"
+                + "将作为 dimensions 参数发送给 Embedding API", providerId, apiDimensions);
         } else {
-            log.info("[LlmProviderRegistry] Provider '{}' 未显式配置 embeddingDimensions，"
-                + "不向 Embedding API 传递 dimensions 参数", providerId);
+            log.info("[LlmProviderRegistry] Provider '{}' 未配置 embeddingDimensions，"
+                    + "将使用模型原生维度（不发送 dimensions 参数）。"
+                    + "注意：若该模型是 MRL 模型（如 text-embedding-3-*、Qwen3-Embedding-*）"
+                    + "且原生维度与向量表不一致，写入向量时会报维度不匹配，"
+                    + "此时需为本 Provider 显式配置 embeddingDimensions。",
+                providerId);
         }
         OpenAiEmbeddingOptions options = optionsBuilder.build();
 
